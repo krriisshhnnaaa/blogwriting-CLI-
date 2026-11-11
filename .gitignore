@@ -1,2 +1,6 @@
 .env
-
+*.o
+*.d
+blogwriter
+build/
+agy.info

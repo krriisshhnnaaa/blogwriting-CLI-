@@ -1,17 +1,17 @@
 #include <iostream>
 #include <string>
 #include <sstream>
-#include <vector>
 #include "writer.h"
+#include "util.h"
 
 const char* DISPLAY_TEXT = R"(
- _  _______  _____  _____ _    _ _   _          _   _  _____ 
+ _  _______  _____  _____ _    _ _   _          _   _  _____
  | |/ /  __ \|_   _|/ ____| |  | | \ | |   /\   | \ | |/ ____|
- | ' /| |__) | | | | (___ | |__| |  \| |  /  \  |  \| | |  __ 
+ | ' /| |__) | | | | (___ | |__| |  \| |  /  \  |  \| | |  __
  |  < |  _  /  | |  \___ \|  __  | . ` | / /\ \ | . ` | | |_ |
  | . \| | \ \ _| |_ ____) | |  | | |\  |/ ____ \| |\  | |__| |
  |_|\_\_|  \_\_____|_____/|_|  |_|_| \_/_/    \_\_| \_|\_____|
-                                                               
+
 
 )";
 
@@ -20,8 +20,9 @@ void print_help() {
               << "help \n\n"
               << "write <title> : writes a file with filename : <title>.txt \n\n"
               << "exit : exit CLI \n\n"
-              << "prep <title> : parses file with filename : <title>.txt through gemini.cpp\n\n"
-              << "make <title> : parses file with filename : <title.txt> through renderer.cpp\n"
+              << "prep <title> : sends <title>.txt to Gemini and saves an image to assets/\n\n"
+              << "make <title> : renders <title>.txt into blogs/<title>.html\n\n"
+              << "titles may contain letters, digits, spaces, '-' and '_'\n"
               << "}\n" << std::endl;
 }
 
@@ -29,47 +30,46 @@ bool execute_command(const std::string& input) {
     std::istringstream iss(input);
     std::string cmd;
     if (!(iss >> cmd)) {
-        return true; // Empty line, continue
+        return true; // empty line
     }
 
     if (cmd == "exit" || cmd == "quit") {
         std::cout << "Exiting CLI." << std::endl;
         return false;
-    } else if (cmd == "help") {
+    }
+    if (cmd == "help") {
         print_help();
-    } else if (cmd == "write") {
-        std::string title;
-        if (iss >> title) {
-            writer::handle_write(title);
-        } else {
-            std::cout << "Usage: write <title>" << std::endl;
-        }
-    } else if (cmd == "prep") {
-        std::string title;
-        if (iss >> title) {
-            writer::handle_prep(title);
-        } else {
-            std::cout << "Usage: prep <title>" << std::endl;
-        }
-    } else if (cmd == "make") {
-        std::string title;
-        if (iss >> title) {
-            writer::handle_make(title);
-        } else {
-            std::cout << "Usage: make <title>" << std::endl;
-        }
-    } else {
-        std::cout << "Unknown command: '" << cmd << "'. Type 'help' for available commands." << std::endl;
+        return true;
     }
 
+    if (cmd == "write" || cmd == "prep" || cmd == "make") {
+        // The title is the rest of the line, so titles can contain spaces.
+        std::string title;
+        std::getline(iss, title);
+        title = util::trim(title);
+
+        if (title.empty()) {
+            std::cout << "Usage: " << cmd << " <title>" << std::endl;
+        } else if (!util::is_valid_title(title)) {
+            std::cout << "Invalid title. Use only letters, digits, spaces, '-' and '_' (max 100 chars)." << std::endl;
+        } else if (cmd == "write") {
+            writer::handle_write(title);
+        } else if (cmd == "prep") {
+            writer::handle_prep(title);
+        } else {
+            writer::handle_make(title);
+        }
+        return true;
+    }
+
+    std::cout << "Unknown command: '" << cmd << "'. Type 'help' for available commands." << std::endl;
     return true;
 }
 
 int main(int argc, char* argv[]) {
-    // CLI tool display_text banner
     std::cout << DISPLAY_TEXT << std::endl;
 
-    // Support non-interactive command line execution
+    // Non-interactive mode: ./blogwriter write my-post
     if (argc > 1) {
         std::string command_line;
         for (int i = 1; i < argc; ++i) {
@@ -80,7 +80,6 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // Interactive CLI loop
     print_help();
     std::string line;
     while (true) {
@@ -92,6 +91,5 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
-
     return 0;
 }

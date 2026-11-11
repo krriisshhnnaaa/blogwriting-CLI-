@@ -1,7 +1,6 @@
 #include "ai.h"
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <vector>
 #include <cstdint>
 #include <cstdlib>
@@ -15,7 +14,8 @@ using json = nlohmann::json;
 
 namespace {
 
-// Helper to write big-endian 32-bit integer for PNG
+const char* MODEL = "gemini-2.5-flash-image";
+
 void write_be32(std::vector<uint8_t>& buf, uint32_t val) {
     buf.push_back((val >> 24) & 0xFF);
     buf.push_back((val >> 16) & 0xFF);
@@ -23,7 +23,6 @@ void write_be32(std::vector<uint8_t>& buf, uint32_t val) {
     buf.push_back(val & 0xFF);
 }
 
-// Helper to add a chunk to PNG buffer
 void add_png_chunk(std::vector<uint8_t>& png, const char* type, const uint8_t* data, size_t len) {
     write_be32(png, static_cast<uint32_t>(len));
     size_t start = png.size();
@@ -35,55 +34,6 @@ void add_png_chunk(std::vector<uint8_t>& png, const char* type, const uint8_t* d
     write_be32(png, crc);
 }
 
-// Generates a valid 1.5:1 rectangular PNG (300x200)
-bool generate_fallback_png(const std::string& filepath) {
-    const int width = 300;
-    const int height = 200;
-    std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
-
-    // IHDR chunk
-    std::vector<uint8_t> ihdr;
-    write_be32(ihdr, width);
-    write_be32(ihdr, height);
-    ihdr.push_back(8); // bit depth 8
-    ihdr.push_back(2); // RGB
-    ihdr.push_back(0); // compression
-    ihdr.push_back(0); // filter
-    ihdr.push_back(0); // interlace
-    add_png_chunk(png, "IHDR", ihdr.data(), ihdr.size());
-
-    // Raw RGB data with filter byte 0 at start of each scanline
-    size_t row_size = 1 + width * 3;
-    std::vector<uint8_t> raw(row_size * height);
-    for (int y = 0; y < height; ++y) {
-        raw[y * row_size] = 0; // Filter: None
-        for (int x = 0; x < width; ++x) {
-            // Elegant gradient (1.5:1 aspect ratio)
-            uint8_t r = static_cast<uint8_t>((50 + (x * 120) / width) % 256);
-            uint8_t g = static_cast<uint8_t>((90 + (y * 100) / height) % 256);
-            uint8_t b = static_cast<uint8_t>((160 + ((x + y) * 80) / (width + height)) % 256);
-            raw[y * row_size + 1 + x * 3 + 0] = r;
-            raw[y * row_size + 1 + x * 3 + 1] = g;
-            raw[y * row_size + 1 + x * 3 + 2] = b;
-        }
-    }
-
-    uLongf dest_len = compressBound(static_cast<uLong>(raw.size()));
-    std::vector<uint8_t> compressed(dest_len);
-    if (compress(compressed.data(), &dest_len, raw.data(), static_cast<uLong>(raw.size())) != Z_OK) {
-        return false;
-    }
-
-    add_png_chunk(png, "IDAT", compressed.data(), dest_len);
-    add_png_chunk(png, "IEND", nullptr, 0);
-
-    std::ofstream out(filepath, std::ios::binary);
-    if (!out) return false;
-    out.write(reinterpret_cast<const char*>(png.data()), png.size());
-    return true;
-}
-
-// Base64 decode helper
 std::vector<uint8_t> base64_decode(const std::string& in) {
     std::vector<uint8_t> out;
     std::vector<int> T(256, -1);
@@ -107,227 +57,236 @@ std::vector<uint8_t> base64_decode(const std::string& in) {
     return out;
 }
 
-// Libcurl write callback
 size_t write_data_callback(void* contents, size_t size, size_t nmemb, void* userp) {
     size_t total_size = size * nmemb;
-    std::string* str = static_cast<std::string*>(userp);
-    str->append(static_cast<char*>(contents), total_size);
+    static_cast<std::string*>(userp)->append(static_cast<char*>(contents), total_size);
     return total_size;
+}
+
+// Remove any previously saved image for this title so only one format exists.
+void remove_old_assets(const std::string& title) {
+    std::error_code ec;
+    for (const char* ext : {".png", ".jpg", ".jpeg"}) {
+        fs::remove("assets/" + title + ext, ec);
+    }
+}
+
+// POSTs the payload; fills response_body and http_code. Returns an error string
+// (empty on success).
+std::string post_to_gemini(const std::string& api_key, const std::string& payload,
+                           std::string& response_body, long& http_code) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return "could not initialise libcurl";
+
+    std::string url = std::string("https://generativelanguage.googleapis.com/v1beta/models/") +
+                      MODEL + ":generateContent";
+    std::string key_header = "x-goog-api-key: " + api_key;
+
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, key_header.c_str());
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L); // image generation can be slow
+
+    CURLcode res = curl_easy_perform(curl);
+    std::string err;
+    if (res == CURLE_OK) {
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    } else {
+        err = std::string("network error: ") + curl_easy_strerror(res);
+    }
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return err;
+}
+
+// Tries to pull an image out of a Gemini response and save it. Returns an empty
+// string on success, otherwise a human-readable reason.
+std::string save_image_from_response(const std::string& title, const std::string& body, long http_code) {
+    json resp;
+    try {
+        resp = json::parse(body);
+    } catch (const std::exception& e) {
+        return "could not parse API response (HTTP " + std::to_string(http_code) + ")";
+    }
+
+    if (resp.contains("error")) {
+        return "API error (HTTP " + std::to_string(http_code) + "): " +
+               resp["error"].value("message", "unknown error");
+    }
+
+    std::string model_text;
+    if (resp.contains("candidates") && resp["candidates"].is_array() && !resp["candidates"].empty()) {
+        const auto& cand = resp["candidates"][0];
+        if (cand.contains("content") && cand["content"].contains("parts")) {
+            for (const auto& part : cand["content"]["parts"]) {
+                if (part.contains("inlineData") && part["inlineData"].contains("data")) {
+                    std::vector<uint8_t> bytes =
+                        base64_decode(part["inlineData"]["data"].get<std::string>());
+                    if (bytes.empty()) continue;
+
+                    std::string mime = part["inlineData"].value("mimeType", "image/png");
+                    std::string ext = (mime.find("jpeg") != std::string::npos ||
+                                       mime.find("jpg") != std::string::npos) ? ".jpg" : ".png";
+                    fs::create_directories("assets");
+                    remove_old_assets(title);
+                    std::ofstream out("assets/" + title + ext, std::ios::binary);
+                    if (!out) return "could not write assets/" + title + ext;
+                    out.write(reinterpret_cast<const char*>(bytes.data()),
+                              static_cast<std::streamsize>(bytes.size()));
+                    return "";
+                }
+                if (part.contains("text")) model_text += part["text"].get<std::string>();
+            }
+        }
+    }
+
+    if (!model_text.empty()) {
+        return "the model replied with text instead of an image: " + model_text.substr(0, 200);
+    }
+    if (resp.contains("promptFeedback")) {
+        return "the request was blocked: " + resp["promptFeedback"].dump();
+    }
+    return "the response contained no image";
 }
 
 } // namespace
 
 namespace ai {
 
+bool write_placeholder_png(const std::string& filepath) {
+    const int width = 300;
+    const int height = 200; // 1.5:1
+    std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+
+    std::vector<uint8_t> ihdr;
+    write_be32(ihdr, width);
+    write_be32(ihdr, height);
+    ihdr.push_back(8); // bit depth
+    ihdr.push_back(2); // RGB
+    ihdr.push_back(0);
+    ihdr.push_back(0);
+    ihdr.push_back(0);
+    add_png_chunk(png, "IHDR", ihdr.data(), ihdr.size());
+
+    size_t row_size = 1 + width * 3;
+    std::vector<uint8_t> raw(row_size * height);
+    for (int y = 0; y < height; ++y) {
+        raw[y * row_size] = 0; // filter: none
+        for (int x = 0; x < width; ++x) {
+            raw[y * row_size + 1 + x * 3 + 0] = static_cast<uint8_t>(50 + (x * 120) / width);
+            raw[y * row_size + 1 + x * 3 + 1] = static_cast<uint8_t>(90 + (y * 100) / height);
+            raw[y * row_size + 1 + x * 3 + 2] = static_cast<uint8_t>(160 + ((x + y) * 80) / (width + height));
+        }
+    }
+
+    uLongf dest_len = compressBound(static_cast<uLong>(raw.size()));
+    std::vector<uint8_t> compressed(dest_len);
+    if (compress(compressed.data(), &dest_len, raw.data(), static_cast<uLong>(raw.size())) != Z_OK) {
+        return false;
+    }
+    add_png_chunk(png, "IDAT", compressed.data(), dest_len);
+    add_png_chunk(png, "IEND", nullptr, 0);
+
+    std::ofstream out(filepath, std::ios::binary);
+    if (!out) return false;
+    out.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
+    return static_cast<bool>(out);
+}
+
 std::string get_api_key() {
-    // 1. Try reading from .env file
-    std::ifstream env_file(".env");
-    if (env_file.is_open()) {
+    // 1. Try reading from .env in current directory, then near executable
+    std::vector<fs::path> candidate_paths = { ".env", "../.env" };
+    try {
+        fs::path exe_dir = fs::canonical("/proc/self/exe").parent_path();
+        candidate_paths.push_back(exe_dir / ".env");
+        candidate_paths.push_back(exe_dir.parent_path() / ".env");
+    } catch (...) {}
+
+    for (const auto& path : candidate_paths) {
+        std::ifstream env_file(path);
+        if (!env_file.is_open()) continue;
+
         std::string line;
         while (std::getline(env_file, line)) {
-            // Trim leading spaces
             size_t start = line.find_first_not_of(" \t");
             if (start == std::string::npos || line[start] == '#') continue;
 
             size_t eq = line.find('=', start);
-            if (eq != std::string::npos) {
-                std::string key = line.substr(start, eq - start);
-                // Trim key
-                size_t key_end = key.find_last_not_of(" \t");
-                if (key_end != std::string::npos) key = key.substr(0, key_end + 1);
+            if (eq == std::string::npos) continue;
 
-                if (key == "API_KEY" || key == "GEMINI_API_KEY") {
-                    std::string val = line.substr(eq + 1);
-                    // Trim val
-                    size_t v_start = val.find_first_not_of(" \t\"'");
-                    size_t v_end = val.find_last_not_of(" \t\"'\r\n");
-                    if (v_start != std::string::npos && v_end != std::string::npos && v_end >= v_start) {
-                        return val.substr(v_start, v_end - v_start + 1);
-                    }
+            std::string key = line.substr(start, eq - start);
+            size_t key_end = key.find_last_not_of(" \t");
+            if (key_end != std::string::npos) key = key.substr(0, key_end + 1);
+
+            if (key == "API_KEY" || key == "GEMINI_API_KEY" || key == "GOOGLE_API_KEY") {
+                std::string val = line.substr(eq + 1);
+                size_t v_start = val.find_first_not_of(" \t\"'");
+                size_t v_end = val.find_last_not_of(" \t\"'\r\n");
+                if (v_start != std::string::npos && v_end != std::string::npos && v_end >= v_start) {
+                    return val.substr(v_start, v_end - v_start + 1);
                 }
             }
         }
     }
 
-    // 2. Fallback to environment variable
-    const char* env_var = std::getenv("GEMINI_API_KEY");
-    if (env_var) return std::string(env_var);
-    env_var = std::getenv("API_KEY");
-    if (env_var) return std::string(env_var);
-
+    // 2. Fallback to environment variables
+    for (const char* name : {"GEMINI_API_KEY", "GOOGLE_API_KEY", "API_KEY"}) {
+        const char* env_var = std::getenv(name);
+        if (env_var && *env_var) return std::string(env_var);
+    }
     return "";
 }
 
-bool generate_image_for_blog(const std::string& title, const std::string& filename) {
+bool generate_image_for_blog(const std::string& title, const std::string& blog_text) {
+    std::string failure;
+
     std::string api_key = get_api_key();
     if (api_key.empty()) {
-        std::cerr << "[ai.cpp] Warning: No API_KEY found in .env file." << std::endl;
+        failure = "no API key found (set GEMINI_API_KEY in .env or the environment)";
+    } else {
+        // The blog text is sent inline as a normal text part. (A local file name
+        // is not something the API can fetch.)
+        std::string prompt =
+            "Make an image for the blog post below. The image should be a rectangular "
+            "landscape image with a 3:2 (1.5:1) aspect ratio. If the post contains "
+            "instructions about the image, follow them.\n\n--- BLOG POST ---\n" + blog_text;
+
+        json payload = {
+            {"contents", json::array({
+                {{"role", "user"}, {"parts", json::array({ {{"text", prompt}} })}}
+            })},
+            {"generationConfig", {{"imageConfig", {{"aspectRatio", "3:2"}}}}}
+        };
+
+        std::cout << "[ai.cpp] Requesting image from " << MODEL << "..." << std::endl;
+        std::string response_body;
+        long http_code = 0;
+        std::string net_err = post_to_gemini(api_key, payload.dump(), response_body, http_code);
+        failure = net_err.empty() ? save_image_from_response(title, response_body, http_code) : net_err;
     }
 
+    if (failure.empty()) {
+        std::cout << "[ai.cpp] Saved generated image to assets/" << title << std::endl;
+        return true;
+    }
+
+    std::cerr << "[ai.cpp] WARNING: image generation failed: " << failure << std::endl;
     fs::create_directories("assets");
-    std::string asset_path_png = "assets/" + title + ".png";
-    std::string asset_path_jpg = "assets/" + title + ".jpg";
-
-    // Build model endpoint URL
-    std::string model_endpoint = "gemini-2.5-flash-image";
-    std::string url = "https://generativelanguage.googleapis.com/v1beta/models/" + model_endpoint + ":generateContent";
-    if (!api_key.empty()) {
-        url += "?key=" + api_key;
+    remove_old_assets(title);
+    if (write_placeholder_png("assets/" + title + ".png")) {
+        std::cerr << "[ai.cpp] Wrote a PLACEHOLDER image to assets/" << title
+                  << ".png (not AI generated)." << std::endl;
+    } else {
+        std::cerr << "[ai.cpp] Could not write a placeholder image either." << std::endl;
     }
-
-    // Prepare JSON payload as specified in agy.info:
-    // {
-    //   "systemInstruction": {
-    //     "parts": [
-    //       {
-    //         "text": "Make a image for the provided .txt file which contains the contents of a blog. the image should be \n  \t\timage dimensions : 1.5 : 1 , rectangular"
-    //       }
-    //     ]
-    //   },
-    //   "contents": [
-    //     {
-    //       "role": "user",
-    //       "parts": [
-    //         {
-    //           "fileData": {
-    //             "mimeType": "text/plain",
-    //             "fille": "<title>.txt"
-    //           }
-    //         }
-    //       ]
-    //     }
-    //   ]
-    // }
-    json payload;
-    payload["systemInstruction"] = {
-        {"parts", json::array({
-            {{"text", "Make a image for the provided .txt file which contains the contents of a blog. the image should be \n  \t\timage dimensions : 1.5 : 1 , rectangular"}}
-        })}
-    };
-    payload["contents"] = json::array({
-        {
-            {"role", "user"},
-            {"parts", json::array({
-                {
-                    {"fileData", {
-                        {"mimeType", "text/plain"},
-                        {"fille", filename}
-                    }}
-                }
-            })}
-        }
-    });
-
-    std::string payload_str = payload.dump();
-
-    CURL* curl = curl_easy_init();
-    std::string response_body;
-    long http_code = 0;
-    bool request_successful = false;
-
-    if (curl) {
-        struct curl_slist* headers = nullptr;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_POST, 1L);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload_str.c_str());
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data_callback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-
-        std::cout << "[ai.cpp] Sending request to endpoint: " << model_endpoint << " for " << filename << "..." << std::endl;
-        CURLcode res = curl_easy_perform(curl);
-        if (res == CURLE_OK) {
-            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-            request_successful = true;
-        } else {
-            std::cerr << "[ai.cpp] curl_easy_perform() failed: " << curl_easy_strerror(res) << std::endl;
-        }
-
-        // If the API returns 400 specifically due to "fille" field name, retry with "fileUri"
-        if (http_code == 400 && response_body.find("fille") != std::string::npos) {
-            json retry_payload = payload;
-            retry_payload["contents"][0]["parts"][0]["fileData"]["fileUri"] = filename;
-            retry_payload["contents"][0]["parts"][0]["fileData"].erase("fille");
-            std::string retry_payload_str = retry_payload.dump();
-
-            response_body.clear();
-            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, retry_payload_str.c_str());
-            res = curl_easy_perform(curl);
-            if (res == CURLE_OK) {
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-            }
-        }
-
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-    }
-
-    bool image_saved = false;
-
-    // Check if response contains image data
-    if (request_successful && !response_body.empty()) {
-        try {
-            json resp_json = json::parse(response_body);
-            if (resp_json.contains("candidates") && resp_json["candidates"].is_array() && !resp_json["candidates"].empty()) {
-                auto& candidate = resp_json["candidates"][0];
-                if (candidate.contains("content") && candidate["content"].contains("parts")) {
-                    for (auto& part : candidate["content"]["parts"]) {
-                        if (part.contains("inlineData") && part["inlineData"].contains("data")) {
-                            std::string b64 = part["inlineData"]["data"].get<std::string>();
-                            std::vector<uint8_t> img_bytes = base64_decode(b64);
-                            if (!img_bytes.empty()) {
-                                std::string mime = part["inlineData"].value("mimeType", "image/jpeg");
-                                if (mime.find("png") != std::string::npos) {
-                                    std::ofstream img_file(asset_path_png, std::ios::binary);
-                                    img_file.write(reinterpret_cast<const char*>(img_bytes.data()), img_bytes.size());
-                                    img_file.close();
-                                } else {
-                                    std::ofstream img_file(asset_path_jpg, std::ios::binary);
-                                    img_file.write(reinterpret_cast<const char*>(img_bytes.data()), img_bytes.size());
-                                    img_file.close();
-                                }
-
-                                // Sync both .jpg and .png formats in /assets
-                                std::string py_sync = "python3 -c \"from PIL import Image; p='" + (fs::exists(asset_path_jpg) ? asset_path_jpg : asset_path_png) + "'; img=Image.open(p).convert('RGB'); img.save('" + asset_path_jpg + "'); img.save('" + asset_path_png + "')\" 2>/dev/null";
-                                std::system(py_sync.c_str());
-
-                                image_saved = true;
-                                std::cout << "[ai.cpp] Successfully saved received image to path : /assets" << std::endl;
-                                break;
-                            }
-                        }
-                    }
-                }
-            } else if (resp_json.contains("error")) {
-                std::cerr << "[ai.cpp] API returned status (" << http_code << "): "
-                          << resp_json["error"].value("message", "Unknown error") << std::endl;
-            }
-        } catch (const std::exception& e) {
-            std::cerr << "[ai.cpp] JSON parsing error: " << e.what() << std::endl;
-        }
-    }
-
-    // If API quota exceeded or request failed, provide fallback 1.5:1 image so /assets contains the image
-    if (!image_saved) {
-        std::cout << "[ai.cpp] Generating rectangular image (1.5:1) for blog at /assets..." << std::endl;
-        bool png_ok = generate_fallback_png(asset_path_png);
-        // Also create JPEG version (300x200, 1.5:1)
-        std::string py_cmd = "python3 -c \"from PIL import Image; img=Image.open('" + asset_path_png + "').convert('RGB'); img.save('" + asset_path_jpg + "')\" 2>/dev/null";
-        int ret = std::system(py_cmd.c_str());
-        (void)ret;
-
-        if (png_ok || fs::exists(asset_path_jpg)) {
-            image_saved = true;
-            std::cout << "[ai.cpp] Image saved to path : /assets" << std::endl;
-        } else {
-            std::cerr << "[ai.cpp] Failed to write image to /assets" << std::endl;
-        }
-    }
-
-    return image_saved;
+    return false;
 }
 
 } // namespace ai
