@@ -22,6 +22,9 @@ void print_help() {
               << "exit : exit CLI \n\n"
               << "prep <title> : sends <title>.txt to Gemini and saves an image to assets/\n\n"
               << "make <title> : renders <title>.txt into blogs/<title>.html\n\n"
+              << "mark <title> : parses <title>.txt through Gemini and saves <title>.md to website\n\n"
+              << "publish <title> : renders and publishes <title> to personal website and blog index\n\n"
+              << "upload <title> : pushes changes to GitHub with commit message 'added <title>'\n\n"
               << "titles may contain letters, digits, spaces, '-' and '_'\n"
               << "}\n" << std::endl;
 }
@@ -42,7 +45,7 @@ bool execute_command(const std::string& input) {
         return true;
     }
 
-    if (cmd == "write" || cmd == "prep" || cmd == "make") {
+    if (cmd == "write" || cmd == "prep" || cmd == "make" || cmd == "mark" || cmd == "publish" || cmd == "upload") {
         // The title is the rest of the line, so titles can contain spaces.
         std::string title;
         std::getline(iss, title);
@@ -56,8 +59,14 @@ bool execute_command(const std::string& input) {
             writer::handle_write(title);
         } else if (cmd == "prep") {
             writer::handle_prep(title);
-        } else {
+        } else if (cmd == "make") {
             writer::handle_make(title);
+        } else if (cmd == "mark") {
+            writer::handle_mark(title);
+        } else if (cmd == "publish") {
+            writer::handle_publish(title);
+        } else if (cmd == "upload") {
+            writer::handle_upload(title);
         }
         return true;
     }

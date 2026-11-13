@@ -1,6 +1,9 @@
 #include "writer.h"
 #include "gemini.h"
 #include "renderer.h"
+#include "mark.h"
+#include "publish.h"
+#include "upload.h"
 #include <iostream>
 #include <cstdlib>
 #include <fstream>
@@ -68,6 +71,30 @@ void handle_prep(const std::string& title) {
 
 void handle_make(const std::string& title) {
     renderer::render(title);
+}
+
+void handle_mark(const std::string& title) {
+    if (mark::process(title)) {
+        std::cout << "[writer.cpp] mark done: markdown created and saved for '" << title << "'." << std::endl;
+    } else {
+        std::cerr << "[writer.cpp] mark failed for '" << title << "'." << std::endl;
+    }
+}
+
+void handle_publish(const std::string& title) {
+    if (publish::process(title)) {
+        std::cout << "[writer.cpp] publish done: published '" << title << "' successfully." << std::endl;
+    } else {
+        std::cerr << "[writer.cpp] publish failed for '" << title << "'." << std::endl;
+    }
+}
+
+void handle_upload(const std::string& title) {
+    if (upload::process(title)) {
+        std::cout << "[writer.cpp] upload done: pushed '" << title << "' to GitHub." << std::endl;
+    } else {
+        std::cerr << "[writer.cpp] upload failed for '" << title << "'." << std::endl;
+    }
 }
 
 } // namespace writer
