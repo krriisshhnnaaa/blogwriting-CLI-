@@ -39,6 +39,7 @@ Run commands from the project root (paths are relative to it).
 
 | Command | What it does |
 | --- | --- |
+| `list` | Lists all blogs written up until now |
 | `write <title>` | Opens `<title>.txt` in `$EDITOR` (default `nano`); a copy is kept in `temp/` |
 | `prep <title>` | Sends the post to Gemini and saves a 3:2 image to `assets/` |
 | `make <title>` | Renders `blogs/<title>.html` from `template/template.html` |

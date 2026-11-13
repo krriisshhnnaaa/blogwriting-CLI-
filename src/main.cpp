@@ -18,6 +18,7 @@ const char* DISPLAY_TEXT = R"(
 void print_help() {
     std::cout << "\navailable commands {\n\n"
               << "help \n\n"
+              << "list : lists all blogs written up until now\n\n"
               << "write <title> : writes a file with filename : <title>.txt \n\n"
               << "exit : exit CLI \n\n"
               << "prep <title> : sends <title>.txt to Gemini and saves an image to assets/\n\n"
@@ -42,6 +43,10 @@ bool execute_command(const std::string& input) {
     }
     if (cmd == "help") {
         print_help();
+        return true;
+    }
+    if (cmd == "list") {
+        writer::handle_list();
         return true;
     }
 

@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
+#include <map>
+#include <vector>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -95,6 +97,99 @@ void handle_upload(const std::string& title) {
     } else {
         std::cerr << "[writer.cpp] upload failed for '" << title << "'." << std::endl;
     }
+}
+
+struct BlogStatus {
+    bool has_txt = false;
+    bool has_img = false;
+    bool has_html = false;
+    bool has_published = false;
+};
+
+void handle_list() {
+    std::map<std::string, BlogStatus> blogs;
+
+    // 1. Scan temp/ for *.txt
+    if (fs::exists("temp") && fs::is_directory("temp")) {
+        for (const auto& entry : fs::directory_iterator("temp")) {
+            if (entry.is_regular_file() && entry.path().extension() == ".txt") {
+                blogs[entry.path().stem().string()].has_txt = true;
+            }
+        }
+    }
+
+    // 2. Scan root for *.txt
+    for (const auto& entry : fs::directory_iterator(".")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".txt") {
+            std::string title = entry.path().stem().string();
+            if (title == "CMakeLists" || title == "CMakeLists.txt") continue;
+            blogs[title].has_txt = true;
+        }
+    }
+
+    // 3. Scan blogs/ for *.html
+    if (fs::exists("blogs") && fs::is_directory("blogs")) {
+        for (const auto& entry : fs::directory_iterator("blogs")) {
+            if (entry.is_regular_file() && entry.path().extension() == ".html") {
+                blogs[entry.path().stem().string()].has_html = true;
+            }
+        }
+    }
+
+    // 4. Scan website blog directory if it exists
+    std::string site_blog_dir = "/home/krishnang/krishnang.dev-personal-website-project/blog";
+    if (fs::exists(site_blog_dir) && fs::is_directory(site_blog_dir)) {
+        for (const auto& entry : fs::directory_iterator(site_blog_dir)) {
+            if (entry.is_directory()) {
+                blogs[entry.path().filename().string()].has_published = true;
+            }
+        }
+    }
+
+    // Check images and update flags for each blog
+    for (auto& [title, info] : blogs) {
+        if (fs::exists("assets/" + title + ".jpg") || fs::exists("assets/" + title + ".png") ||
+            fs::exists("blogs/" + title + ".jpg") || fs::exists("blogs/" + title + ".png") ||
+            fs::exists(site_blog_dir + "/" + title + "/" + title + ".jpg")) {
+            info.has_img = true;
+        }
+        if (fs::exists("blogs/" + title + ".html") ||
+            fs::exists(site_blog_dir + "/" + title + "/" + title + ".html")) {
+            info.has_html = true;
+        }
+        if (fs::exists(site_blog_dir + "/" + title)) {
+            info.has_published = true;
+        }
+        if (fs::exists("temp/" + title + ".txt") || fs::exists(title + ".txt")) {
+            info.has_txt = true;
+        }
+    }
+
+    if (blogs.empty()) {
+        std::cout << "No written blogs found." << std::endl;
+        return;
+    }
+
+    std::cout << "\nBlogs written up until now (" << blogs.size() << " total):\n" << std::endl;
+    int idx = 1;
+    for (const auto& [title, info] : blogs) {
+        std::cout << "  " << idx++ << ". " << title;
+        std::vector<std::string> tags;
+        if (info.has_txt) tags.push_back("draft");
+        if (info.has_img) tags.push_back("image");
+        if (info.has_html) tags.push_back("html");
+        if (info.has_published) tags.push_back("published");
+        if (!tags.empty()) {
+            std::cout << " (";
+            for (size_t i = 0; i < tags.size(); ++i) {
+                if (i > 0) std::cout << ", ";
+                std::cout << tags[i];
+            }
+            std::cout << ")";
+        }
+        std::cout << "\n";
+    }
+    std::cout << std::endl;
 }
 
 } // namespace writer
