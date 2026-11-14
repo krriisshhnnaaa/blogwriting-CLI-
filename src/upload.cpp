@@ -38,7 +38,7 @@ bool process(const std::string& title) {
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
-} // namespace upload
+}
 
 #ifdef UPLOAD_STANDALONE
 int main(int argc, char* argv[]) {

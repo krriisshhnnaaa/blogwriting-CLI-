@@ -34,7 +34,7 @@ bool execute_command(const std::string& input) {
     std::istringstream iss(input);
     std::string cmd;
     if (!(iss >> cmd)) {
-        return true; // empty line
+        return true;
     }
 
     if (cmd == "exit" || cmd == "quit") {
@@ -51,7 +51,6 @@ bool execute_command(const std::string& input) {
     }
 
     if (cmd == "write" || cmd == "prep" || cmd == "make" || cmd == "mark" || cmd == "publish" || cmd == "upload") {
-        // The title is the rest of the line, so titles can contain spaces.
         std::string title;
         std::getline(iss, title);
         title = util::trim(title);
@@ -83,7 +82,6 @@ bool execute_command(const std::string& input) {
 int main(int argc, char* argv[]) {
     std::cout << DISPLAY_TEXT << std::endl;
 
-    // Non-interactive mode: ./blogwriter write my-post
     if (argc > 1) {
         std::string command_line;
         for (int i = 1; i < argc; ++i) {
@@ -99,7 +97,7 @@ int main(int argc, char* argv[]) {
     while (true) {
         std::cout << "blogWRITER> ";
         if (!std::getline(std::cin, line)) {
-            break; // EOF
+            break;
         }
         if (!execute_command(line)) {
             break;

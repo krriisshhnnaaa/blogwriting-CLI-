@@ -63,7 +63,6 @@ size_t write_data_callback(void* contents, size_t size, size_t nmemb, void* user
     return total_size;
 }
 
-// Remove any previously saved image for this title so only one format exists.
 void remove_old_assets(const std::string& title) {
     std::error_code ec;
     for (const char* ext : {".png", ".jpg", ".jpeg"}) {
@@ -71,8 +70,6 @@ void remove_old_assets(const std::string& title) {
     }
 }
 
-// POSTs the payload; fills response_body and http_code. Returns an error string
-// (empty on success).
 std::string post_to_gemini(const std::string& api_key, const std::string& payload,
                            std::string& response_body, long& http_code) {
     CURL* curl = curl_easy_init();
@@ -92,7 +89,7 @@ std::string post_to_gemini(const std::string& api_key, const std::string& payloa
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L); // image generation can be slow
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
 
     CURLcode res = curl_easy_perform(curl);
     std::string err;
@@ -106,8 +103,6 @@ std::string post_to_gemini(const std::string& api_key, const std::string& payloa
     return err;
 }
 
-// Tries to pull an image out of a Gemini response and save it. Returns an empty
-// string on success, otherwise a human-readable reason.
 std::string save_image_from_response(const std::string& title, const std::string& body, long http_code) {
     json resp;
     try {
@@ -156,20 +151,20 @@ std::string save_image_from_response(const std::string& title, const std::string
     return "the response contained no image";
 }
 
-} // namespace
+}
 
 namespace ai {
 
 bool write_placeholder_png(const std::string& filepath) {
     const int width = 300;
-    const int height = 200; // 1.5:1
+    const int height = 200;
     std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
 
     std::vector<uint8_t> ihdr;
     write_be32(ihdr, width);
     write_be32(ihdr, height);
-    ihdr.push_back(8); // bit depth
-    ihdr.push_back(2); // RGB
+    ihdr.push_back(8);
+    ihdr.push_back(2);
     ihdr.push_back(0);
     ihdr.push_back(0);
     ihdr.push_back(0);
@@ -178,7 +173,7 @@ bool write_placeholder_png(const std::string& filepath) {
     size_t row_size = 1 + width * 3;
     std::vector<uint8_t> raw(row_size * height);
     for (int y = 0; y < height; ++y) {
-        raw[y * row_size] = 0; // filter: none
+        raw[y * row_size] = 0;
         for (int x = 0; x < width; ++x) {
             raw[y * row_size + 1 + x * 3 + 0] = static_cast<uint8_t>(50 + (x * 120) / width);
             raw[y * row_size + 1 + x * 3 + 1] = static_cast<uint8_t>(90 + (y * 100) / height);
@@ -201,7 +196,6 @@ bool write_placeholder_png(const std::string& filepath) {
 }
 
 std::string get_api_key() {
-    // 1. Try reading from .env in current directory, then near executable
     std::vector<fs::path> candidate_paths = { ".env", "../.env" };
     try {
         fs::path exe_dir = fs::canonical("/proc/self/exe").parent_path();
@@ -236,7 +230,6 @@ std::string get_api_key() {
         }
     }
 
-    // 2. Fallback to environment variables
     for (const char* name : {"GEMINI_API_KEY", "GOOGLE_API_KEY", "API_KEY"}) {
         const char* env_var = std::getenv(name);
         if (env_var && *env_var) return std::string(env_var);
@@ -251,8 +244,6 @@ bool generate_image_for_blog(const std::string& title, const std::string& blog_t
     if (api_key.empty()) {
         failure = "no API key found (set GEMINI_API_KEY in .env or the environment)";
     } else {
-        // The blog text is sent inline as a normal text part. (A local file name
-        // is not something the API can fetch.)
         std::string prompt =
             "Make an image for the blog post below. The image should be a rectangular "
             "landscape image with a 3:2 (1.5:1) aspect ratio. If the post contains "
@@ -289,4 +280,4 @@ bool generate_image_for_blog(const std::string& title, const std::string& blog_t
     return false;
 }
 
-} // namespace ai
+}

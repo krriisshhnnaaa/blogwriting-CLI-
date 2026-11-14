@@ -125,7 +125,7 @@ bool run_save_script(const std::string& title) {
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
-} // namespace
+}
 
 namespace mark {
 
@@ -308,11 +308,9 @@ bool process(const std::string& title) {
 
     std::cout << "[mark.cpp] Saved " << root_md_path << " and " << temp_md_path << std::endl;
 
-    // sleep = 1
     std::cout << "[mark.cpp] Waiting 1 second..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    // exec-once : save.sh
     if (!run_save_script(title)) {
         std::cerr << "[mark.cpp] Warning: save.sh reported non-zero status." << std::endl;
         return false;
@@ -321,7 +319,7 @@ bool process(const std::string& title) {
     return true;
 }
 
-} // namespace mark
+}
 
 #ifdef MARK_STANDALONE
 int main(int argc, char* argv[]) {

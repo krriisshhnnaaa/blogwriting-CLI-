@@ -13,4 +13,4 @@ namespace writer {
     void handle_upload(const std::string& title);
 }
 
-#endif // WRITER_H
+#endif

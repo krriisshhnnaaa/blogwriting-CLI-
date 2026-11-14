@@ -17,8 +17,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// Launches $EDITOR (default: nano) on a file WITHOUT going through a shell, so
-// file names can never be interpreted as commands.
 bool run_editor(const std::string& file) {
     const char* env = std::getenv("EDITOR");
     std::string editor = (env && *env) ? env : "nano";
@@ -34,7 +32,7 @@ bool run_editor(const std::string& file) {
     return WIFEXITED(status) && WEXITSTATUS(status) != 127;
 }
 
-} // namespace
+}
 
 namespace writer {
 
@@ -43,7 +41,6 @@ void handle_write(const std::string& title) {
     std::string root_filename = title + ".txt";
     std::string temp_filename = "temp/" + root_filename;
 
-    // Make sure both copies exist if either does.
     if (fs::exists(root_filename) && !fs::exists(temp_filename)) {
         fs::copy_file(root_filename, temp_filename, fs::copy_options::overwrite_existing);
     } else if (fs::exists(temp_filename) && !fs::exists(root_filename)) {
@@ -109,7 +106,6 @@ struct BlogStatus {
 void handle_list() {
     std::map<std::string, BlogStatus> blogs;
 
-    // 1. Scan temp/ for *.txt
     if (fs::exists("temp") && fs::is_directory("temp")) {
         for (const auto& entry : fs::directory_iterator("temp")) {
             if (entry.is_regular_file() && entry.path().extension() == ".txt") {
@@ -118,7 +114,6 @@ void handle_list() {
         }
     }
 
-    // 2. Scan root for *.txt
     for (const auto& entry : fs::directory_iterator(".")) {
         if (entry.is_regular_file() && entry.path().extension() == ".txt") {
             std::string title = entry.path().stem().string();
@@ -127,7 +122,6 @@ void handle_list() {
         }
     }
 
-    // 3. Scan blogs/ for *.html
     if (fs::exists("blogs") && fs::is_directory("blogs")) {
         for (const auto& entry : fs::directory_iterator("blogs")) {
             if (entry.is_regular_file() && entry.path().extension() == ".html") {
@@ -136,7 +130,6 @@ void handle_list() {
         }
     }
 
-    // 4. Scan website blog directory if it exists
     std::string site_blog_dir = "/home/krishnang/krishnang.dev-personal-website-project/blog";
     if (fs::exists(site_blog_dir) && fs::is_directory(site_blog_dir)) {
         for (const auto& entry : fs::directory_iterator(site_blog_dir)) {
@@ -146,7 +139,6 @@ void handle_list() {
         }
     }
 
-    // Check images and update flags for each blog
     for (auto& [title, info] : blogs) {
         if (fs::exists("assets/" + title + ".jpg") || fs::exists("assets/" + title + ".png") ||
             fs::exists("blogs/" + title + ".jpg") || fs::exists("blogs/" + title + ".png") ||
@@ -192,4 +184,4 @@ void handle_list() {
     std::cout << std::endl;
 }
 
-} // namespace writer
+}

@@ -82,7 +82,7 @@ std::string clean_json_text(const std::string& raw) {
     return s;
 }
 
-} // namespace
+}
 
 namespace gemini {
 
@@ -201,7 +201,6 @@ bool generate_prompt_json(const std::string& title, const std::string& blog_text
             }}
         };
     } else {
-        // Normalize structure to ensure expected fields exist
         if (!result_json.contains("meta-data")) {
             result_json["meta-data"] = {
                 {"blog name", title},
@@ -270,13 +269,11 @@ bool process(const std::string& title) {
 
     std::cout << "[gemini.cpp] Parsing " << filename << " through gemini.cpp..." << std::endl;
 
-    // Step 1: Request prompt from Gemini 3.8 flash and create <title>.json
     if (!generate_prompt_json(title, buffer.str())) {
         std::cerr << "[gemini.cpp] Failed to generate " << title << ".json" << std::endl;
         return false;
     }
 
-    // Step 2: Pass <title>.json through image_gen.cpp
     std::cout << "[gemini.cpp] Parsing " << title << ".json through image_gen.cpp..." << std::endl;
     bool img_ok = image_gen::generate_image_from_json(title);
     if (!img_ok) {
@@ -289,4 +286,4 @@ bool process(const std::string& title) {
     return true;
 }
 
-} // namespace gemini
+}

@@ -27,7 +27,6 @@ std::string read_file_to_string(const std::string& path) {
     return buffer.str();
 }
 
-// Copies the template backgrounds next to the generated page.
 void copy_template_backgrounds() {
     for (const char* name : {"wood.jpg", "bg.jpg"}) {
         std::string src = std::string("template/") + name;
@@ -38,8 +37,6 @@ void copy_template_backgrounds() {
     }
 }
 
-// Finds assets/<title>.(png|jpg|jpeg), copies it into blogs/ and returns the
-// file name to reference from the page. Falls back to a placeholder image.
 std::string prepare_title_image(const std::string& title) {
     for (const char* ext : {".png", ".jpg", ".jpeg"}) {
         std::string asset = "assets/" + title + ext;
@@ -86,14 +83,13 @@ const char* DEFAULT_TEMPLATE = R"(<!DOCTYPE html>
 </html>
 )";
 
-} // namespace
+}
 
 namespace renderer {
 
 bool render(const std::string& title) {
     std::cout << "[renderer.cpp] Rendering '" << title << "'" << std::endl;
 
-    // 1. Blog text: temp/<title>.txt, falling back to the project root.
     std::string txt_filename = title + ".txt";
     std::string temp_txt_path = "temp/" + txt_filename;
     std::string blog_content;
@@ -109,7 +105,6 @@ bool render(const std::string& title) {
         return false;
     }
 
-    // 2. Template.
     std::string html = read_file_to_string("template/template.html");
     if (html.empty()) {
         std::cerr << "[renderer.cpp] Warning: template/template.html missing, using built-in template"
@@ -117,19 +112,16 @@ bool render(const std::string& title) {
         html = DEFAULT_TEMPLATE;
     }
 
-    // 3. Images.
     fs::create_directories("blogs");
     copy_template_backgrounds();
     std::string image_name = prepare_title_image(title);
 
-    // 4. Fill in the template. Everything user-provided is HTML-escaped.
     std::string safe_title = util::html_escape(title);
     replace_all(html, "<img src=\"<title>.jpg\" alt=\"<title>\">",
                 "<img src=\"" + util::url_encode(image_name) + "\" alt=\"" + safe_title + "\">");
     replace_all(html, "<div class=\"overlay-text\"> <title> </div>",
                 "<div class=\"overlay-text\"> " + safe_title + " </div>");
     replace_all(html, "<topic>", safe_title);
-    // Blog content goes in last so nothing in it can be mistaken for a placeholder.
     replace_all(html, "{ content from <title>.txt }", util::html_escape(blog_content));
 
     std::string output_path = "blogs/" + title + ".html";
@@ -145,4 +137,4 @@ bool render(const std::string& title) {
     return true;
 }
 
-} // namespace renderer
+}

@@ -6,8 +6,6 @@
 
 namespace util {
 
-// Titles become file names and are used in HTML, so only allow a safe subset:
-// letters, digits, spaces, '-' and '_' (no leading/trailing space, max 100 chars).
 inline bool is_valid_title(const std::string& t) {
     if (t.empty() || t.size() > 100) return false;
     if (t.front() == ' ' || t.back() == ' ') return false;
@@ -33,7 +31,6 @@ inline std::string html_escape(const std::string& s) {
     return out;
 }
 
-// Percent-encode everything except unreserved URL characters (for use in src="...").
 inline std::string url_encode(const std::string& s) {
     static const char* hex = "0123456789ABCDEF";
     std::string out;
@@ -56,6 +53,6 @@ inline std::string trim(const std::string& s) {
     return s.substr(b, e - b + 1);
 }
 
-} // namespace util
+}
 
-#endif // UTIL_H
+#endif

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Usage: ./save.sh <title>
 
 TITLE="$1"
 if [ -z "$TITLE" ]; then
@@ -10,10 +9,8 @@ fi
 SITE_DIR="/home/krishnang/krishnang.dev-personal-website-project"
 TARGET_DIR="$SITE_DIR/blog/$TITLE"
 
-# Create destination directory in the website project
 mkdir -p "$TARGET_DIR"
 
-# Locate <title>.md (check root then temp/)
 MD_FILE=""
 if [ -f "$TITLE.md" ]; then
     MD_FILE="$TITLE.md"
@@ -30,7 +27,6 @@ if [ -z "$MD_FILE" ]; then
     exit 1
 fi
 
-# Save <title>.md to path : /home/krishnang/krishnang.dev-personal-website-project/blog/<title>
 cp "$MD_FILE" "$TARGET_DIR/$TITLE.md"
 cp "$MD_FILE" "$TARGET_DIR/post.md"
 

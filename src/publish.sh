@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Usage: ./publish.sh <title>
 
 TITLE="$1"
 if [ -z "$TITLE" ]; then
@@ -11,7 +10,6 @@ SITE_DIR="/home/krishnang/krishnang.dev-personal-website-project"
 TARGET_DIR="$SITE_DIR/blog/$TITLE"
 DATE=$(date +%Y-%m-%d)
 
-# 1. Run make to ensure the HTML & image are fresh
 if [ -x "./blogwriter" ]; then
     ./blogwriter make "$TITLE"
 elif [ -x "$(dirname "$0")/../blogwriter" ]; then
@@ -20,23 +18,19 @@ else
     blogwriter make "$TITLE"
 fi
 
-# 2. Create the destination folder in the website
 mkdir -p "$TARGET_DIR"
 
-# 3. Copy rendered HTML and images
 cp "blogs/$TITLE.html" "$TARGET_DIR/"
 [ -f "blogs/$TITLE.jpg" ] && cp "blogs/$TITLE.jpg" "$TARGET_DIR/"
 [ -f "blogs/bg.jpg" ] && cp "blogs/bg.jpg" "$TARGET_DIR/"
 [ -f "blogs/wood.jpg" ] && cp "blogs/wood.jpg" "$TARGET_DIR/"
 
-# 4. Extract first 2 lines as description from temp/<title>.txt
 if [ ! -f "temp/$TITLE.txt" ] && [ -f "$TITLE.txt" ]; then
     mkdir -p temp
     cp "$TITLE.txt" "temp/$TITLE.txt"
 fi
 DESC=$(grep -v '^#' "temp/$TITLE.txt" | grep -v '^[[:space:]]*$' | head -n 1 | cut -c 1-140)
 
-# 5. Create post.md for activity-blog.js metadata parser
 cat <<EOF > "$TARGET_DIR/post.md"
 ---
 title: "$TITLE"
@@ -49,7 +43,6 @@ url: "/blog/$TITLE/$TITLE.html"
 EOF
 cat "temp/$TITLE.txt" >> "$TARGET_DIR/post.md"
 
-# 6. Register in blog-index.json if not already present
 python3 -c "
 import json
 p = '$SITE_DIR/blog-index.json'

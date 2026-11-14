@@ -7,4 +7,4 @@ namespace renderer {
     bool render(const std::string& title);
 }
 
-#endif // RENDERER_H
+#endif

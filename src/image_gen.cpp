@@ -31,7 +31,7 @@ static std::vector<unsigned char> base64_decode(const std::string& in) {
     int val = 0, bits = -8;
     for (unsigned char c : in) {
         if (c == '=') break;
-        if (table[c] == -1) continue; // skip newlines etc.
+        if (table[c] == -1) continue;
         val = (val << 6) + table[c];
         bits += 6;
         if (bits >= 0) {
@@ -76,7 +76,6 @@ static bool run_model(const std::string& account_id, const std::string& token,
 }
 
 std::string get_api_key() {
-    // 1. Try reading from .env in current directory, then near executable
     std::vector<fs::path> candidate_paths = { ".env", "../.env" };
     try {
         fs::path exe_dir = fs::canonical("/proc/self/exe").parent_path();
@@ -109,7 +108,6 @@ std::string get_api_key() {
         }
     }
 
-    // 2. Fallback to environment variables
     for (const char* name : {"CF_API_TOKEN", "CF_API_KEY", "CLOUDFLARE_API_TOKEN"}) {
         const char* val = std::getenv(name);
         if (val && *val) return std::string(val);
@@ -119,7 +117,6 @@ std::string get_api_key() {
 }
 
 std::string get_account_id() {
-    // 1. Try reading from .env in current directory, then near executable
     std::vector<fs::path> candidate_paths = { ".env", "../.env" };
     try {
         fs::path exe_dir = fs::canonical("/proc/self/exe").parent_path();
@@ -152,7 +149,6 @@ std::string get_account_id() {
         }
     }
 
-    // 2. Fallback to environment variables
     for (const char* name : {"CF_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID"}) {
         const char* val = std::getenv(name);
         if (val && *val) return std::string(val);
@@ -294,7 +290,7 @@ bool generate_image_from_json(const std::string& title) {
     return process_json_file(json_path, outfile);
 }
 
-} // namespace image_gen
+}
 
 #ifdef IMAGE_GEN_STANDALONE
 int main(int argc, char* argv[]) {
